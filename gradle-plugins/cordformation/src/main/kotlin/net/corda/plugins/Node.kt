@@ -160,7 +160,6 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
         }
         installCordapps()
         installConfig()
-        appendOptionalConfig()
     }
 
     internal fun rootDir(rootDir: Path) {
@@ -253,24 +252,13 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
      * Installs the configuration file to the root directory and detokenises it.
      */
     fun installConfig() {
-        val options = ConfigRenderOptions
-                .defaults()
-                .setOriginComments(false)
-                .setComments(false)
-                .setFormatted(true)
-                .setJson(false)
-        val configFileText = config.root().render(options).split("\n").toList()
-
-        // Need to write a temporary file first to use the project.copy, which resolves directories correctly.
-        val tmpDir = File(project.buildDir, "tmp")
-        tmpDir.mkdirs()
-        val tmpConfFile = File(tmpDir, "node.conf")
-        Files.write(tmpConfFile.toPath(), configFileText, StandardCharsets.UTF_8)
-
+        configureProperties()
+        val tmpConfFile = createTempConfigFile()
+        appendOptionalConfig(tmpConfFile)
         project.copy {
             it.apply {
                 from(tmpConfFile)
-                into(nodeDir)
+                into(rootDir)
             }
         }
     }
@@ -278,7 +266,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
     /**
      * Appends installed config file with properties from an optional file.
      */
-    private fun appendOptionalConfig() {
+    private fun appendOptionalConfig(confFile: File) {
         val optionalConfig: File? = when {
             project.findProperty(configFileProperty) != null -> //provided by -PconfigFile command line property when running Gradle task
                 File(project.findProperty(configFileProperty) as String)
@@ -290,7 +278,6 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
             if (!optionalConfig.exists()) {
                 project.logger.error("$configFileProperty '$optionalConfig' not found")
             } else {
-                val confFile = File(project.buildDir.path + "/../" + nodeDir, "node.conf")
                 confFile.appendBytes(optionalConfig.readBytes())
             }
         }
