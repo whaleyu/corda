@@ -158,6 +158,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
         if (config.hasPath("webAddress")) {
             installWebserverJar()
         }
+        installAgentJar()
         installCordapps()
         installConfig()
     }
