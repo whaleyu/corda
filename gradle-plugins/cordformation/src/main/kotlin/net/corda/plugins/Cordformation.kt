@@ -3,6 +3,7 @@ package net.corda.plugins
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import java.io.File
+import java.io.InputStream
 
 /**
  * The Cordformation plugin deploys nodes to a directory in a state ready to be used by a developer for experimentation,
@@ -13,13 +14,19 @@ class Cordformation : Plugin<Project> {
         const val CORDFORMATION_TYPE = "cordformationInternal"
 
         /**
-         * Gets a resource file from this plugin's JAR file.
+         * Gets a resource file from this plugin's JAR file by creating an intermediate tmp dir
          *
          * @param filePathInJar The file in the JAR, relative to root, you wish to access.
          * @return A file handle to the file in the JAR.
          */
-        fun getPluginFile(filePathInJar: String): File {
-            return File(Cordformation::class.java.getResource(filePathInJar).toURI())
+        fun getPluginFile(project: Project, filePathInJar: String): File {
+            val tmpDir = File(project.buildDir, "tmp")
+            val outputFile = File(tmpDir, filePathInJar)
+            tmpDir.mkdir()
+            outputFile.outputStream().use {
+                Cordformation::class.java.getResourceAsStream(filePathInJar).copyTo(it)
+            }
+            return outputFile
         }
 
         /**

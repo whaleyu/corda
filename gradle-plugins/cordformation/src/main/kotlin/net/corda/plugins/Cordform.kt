@@ -1,21 +1,16 @@
 package net.corda.plugins
 
 import groovy.lang.Closure
-import net.corda.cordform.CordappDependency
 import net.corda.cordform.CordformDefinition
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.gradle.api.DefaultTask
-import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginConvention
 import org.gradle.api.tasks.SourceSet.MAIN_SOURCE_SET_NAME
 import org.gradle.api.tasks.TaskAction
-import java.io.File
 import java.lang.reflect.InvocationTargetException
 import java.net.URLClassLoader
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.util.jar.JarInputStream
-import javax.inject.Inject
 
 /**
  * Creates nodes based on the configuration of this task in the gradle configuration DSL.
@@ -23,7 +18,7 @@ import javax.inject.Inject
  * See documentation for examples.
  */
 @Suppress("unused")
-open class Cordform @Inject constructor(private val objectFactory: ObjectFactory) : DefaultTask() {
+open class Cordform : DefaultTask() {
 
     private companion object {
         val nodeJarName = "corda.jar"
@@ -54,7 +49,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
      */
     @Suppress("MemberVisibilityCanPrivate")
     fun node(configureClosure: Closure<in Node>) {
-        nodes += project.configure(objectFactory.newInstance(Node::class.java, project), configureClosure) as Node
+        nodes += project.configure(Node(project), configureClosure) as Node
     }
 
     /**
@@ -64,9 +59,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
      */
     @Suppress("MemberVisibilityCanPrivate")
     fun node(configureFunc: Node.() -> Any?): Node {
-        val node = objectFactory.newInstance(Node::class.java, project).apply {
-            configureFunc()
-        }
+        val node = Node(project).apply { configureFunc() }
         nodes += node
         return node
     }
@@ -86,7 +79,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
     private fun installRunScript() {
         project.copy {
             it.apply {
-                from(Cordformation.getPluginFile("runnodes.jar"))
+                from(Cordformation.getPluginFile(project,"runnodes.jar"))
                 fileMode = Cordformation.executableFileMode
                 into("$directory/")
             }
@@ -94,7 +87,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
 
         project.copy {
             it.apply {
-                from(Cordformation.getPluginFile("runnodes"))
+                from(Cordformation.getPluginFile(project,"runnodes"))
                 // Replaces end of line with lf to avoid issues with the bash interpreter and Windows style line endings.
                 filter(mapOf("eol" to FixCrLfFilter.CrLf.newInstance("lf")), FixCrLfFilter::class.java)
                 fileMode = Cordformation.executableFileMode
@@ -104,7 +97,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
 
         project.copy {
             it.apply {
-                from(Cordformation.getPluginFile("runnodes.bat"))
+                from(Cordformation.getPluginFile(project,"runnodes.bat"))
                 into("$directory/")
             }
         }
@@ -176,7 +169,7 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
                 val node = node { }
                 it.accept(node)
                 cordapps.forEach {
-                    if(it.mavenCoordinates != null) {
+                    if (it.mavenCoordinates != null) {
                         node.cordapp(project.project(it.mavenCoordinates!!))
                     } else {
                         node.cordapp(it.projectName!!)
