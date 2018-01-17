@@ -4,20 +4,16 @@ import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigRenderOptions
 import com.typesafe.config.ConfigValueFactory
 import groovy.lang.Closure
-import com.typesafe.config.ConfigFactory
-import com.typesafe.config.ConfigRenderOptions
-import com.typesafe.config.ConfigValueFactory
 import net.corda.cordform.CordformNode
 import org.apache.commons.io.FilenameUtils
-import org.bouncycastle.asn1.x500.X500Name
-import org.bouncycastle.asn1.x500.style.BCStyle
 import org.gradle.api.GradleException
 import org.gradle.api.Project
-import org.gradle.api.model.ObjectFactory
+import org.gradle.api.artifacts.ProjectDependency
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.inject.Inject
 
 /**
  * Represents a node that will be installed.
@@ -48,7 +44,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
         }
 
     private val internalCordapps = mutableListOf<Cordapp>()
-    private val releaseVersion = project.rootProject.ext<String>("corda_release_version")
+    private val builtCordapp = Cordapp(project)
     internal lateinit var nodeDir: File
         private set
     internal lateinit var rootDir: File
@@ -82,17 +78,6 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
     fun sshdPort(sshdPort: Int) {
         config = config.withValue("sshdAddress",
                 ConfigValueFactory.fromAnyRef("$DEFAULT_HOST:$sshdPort"))
-    }
-
-    /**
-     * Configures the default cordapp automatically added to this node
-     *
-     * @param configureClosure A groovy closure to configure a [Cordapp] object
-     * @return The created and inserted [Cordapp]
-     */
-    fun cordapp(configureClosure: Closure<in Cordapp>): Cordapp {
-        project.configure(builtCordapp, configureClosure) as Cordapp
-        return builtCordapp
     }
 
     /**
@@ -158,12 +143,21 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
         }
     }
 
+    /**
+     * Configures the default cordapp automatically added to this node
+     *
+     * @param configureClosure A groovy closure to configure a [Cordapp] object
+     * @return The created and inserted [Cordapp]
+     */
+    fun cordapp(configureClosure: Closure<in Cordapp>): Cordapp {
+        project.configure(builtCordapp, configureClosure) as Cordapp
+        return builtCordapp
+    }
 
     internal fun build() {
         if (config.hasPath("webAddress")) {
             installWebserverJar()
         }
-        installBuiltCordapp()
         installCordapps()
         installConfig()
         appendOptionalConfig()
@@ -205,22 +199,6 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
                 rename(webJar.name, webJarName)
             }
         }
-    }
-
-    /**
-     * Installs the jolokia monitoring agent JAR to the node/drivers directory
-     */
-    private fun installCordapps() {
-        val cordapps = getCordappList()
-        val cordappsDir = File(nodeDir, "cordapps")
-        project.copy {
-            it.apply {
-                from(cordapps.map { it.jarFile })
-                into(project.file(cordappsDir))
-            }
-        }
-
-        installCordappConfigs(cordapps)
     }
 
     /**
@@ -274,7 +252,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
     /**
      * Installs the configuration file to the root directory and detokenises it.
      */
-    private fun installConfig() {
+    fun installConfig() {
         val options = ConfigRenderOptions
                 .defaults()
                 .setOriginComments(false)
@@ -285,7 +263,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
 
         // Need to write a temporary file first to use the project.copy, which resolves directories correctly.
         val tmpDir = File(project.buildDir, "tmp")
-        tmpDir.mkdir()
+        tmpDir.mkdirs()
         val tmpConfFile = File(tmpDir, "node.conf")
         Files.write(tmpConfFile.toPath(), configFileText, StandardCharsets.UTF_8)
 
@@ -318,42 +296,21 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
         }
     }
 
+
     /**
-     * Installs other cordapps to this node's cordapps directory.
+     * Installs the jolokia monitoring agent JAR to the node/drivers directory
      */
-    internal fun installCordapps() {
-        additionalCordapps.addAll(getCordappList())
+    private fun installCordapps() {
+        val cordapps = getCordappList()
         val cordappsDir = File(nodeDir, "cordapps")
         project.copy {
             it.apply {
-                from(additionalCordapps)
-                into(cordappsDir)
+                from(cordapps.map { it.jarFile })
+                into(project.file(cordappsDir))
             }
         }
-    }
 
-    /**
-     * Add a cordapp to this node
-     *
-     * @param configureClosure A groovy closure to configure a [Cordapp] object
-     * @return The created and inserted [Cordapp]
-     */
-    fun cordapp(configureClosure: Closure<in Cordapp>): Cordapp {
-        val cordapp = project.configure(objectFactory.newInstance(Cordapp::class.java), configureClosure) as Cordapp
-        addCordapp(cordapp)
-        return cordapp
-    }
-
-    /**
-     * Add a cordapp to this node
-     *
-     * @param configureFunc A lambda to configure a [Cordapp] object
-     * @return The created and inserted [Cordapp]
-     */
-    fun cordapp(configureFunc: Cordapp.() -> Unit): Cordapp {
-        val cordapp = objectFactory.newInstance(Cordapp::class.java).apply { configureFunc() }
-        addCordapp(cordapp)
-        return cordapp
+        installCordappConfigs(cordapps)
     }
 
 
@@ -367,7 +324,7 @@ open class Node @Inject constructor(private val project: Project) : CordformNode
 
     private fun resolveCordapp(cordapp: Cordapp): ResolvedCordapp {
         val cordappConfiguration = project.configuration("cordapp")
-        val cordappName = if(cordapp.project != null) cordapp.project.name else cordapp.coordinates
+        val cordappName = if (cordapp.project != null) cordapp.project.name else cordapp.coordinates
         val cordappFile = cordappConfiguration.files {
             when {
                 it is ProjectDependency -> it.dependencyProject == cordapp.project!!

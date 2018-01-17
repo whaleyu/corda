@@ -1,9 +1,11 @@
 package net.corda.plugins
 
 import groovy.lang.Closure
+import net.corda.cordform.CordappDependency
 import net.corda.cordform.CordformDefinition
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.gradle.api.DefaultTask
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginConvention
 import org.gradle.api.tasks.SourceSet.MAIN_SOURCE_SET_NAME
 import org.gradle.api.tasks.TaskAction
@@ -13,6 +15,7 @@ import java.net.URLClassLoader
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.jar.JarInputStream
+import javax.inject.Inject
 
 /**
  * Creates nodes based on the configuration of this task in the gradle configuration DSL.
@@ -168,11 +171,17 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
                 "'directory' cannot be used when 'definitionClass' is specified. Use CordformDefinition.nodesDirectory instead."
             }
             directory = cd.nodesDirectory
-            val cordapps = cd.getMatchingCordapps()
+            val cordapps = cd.cordappDependencies
             cd.nodeConfigurers.forEach {
                 val node = node { }
                 it.accept(node)
-                node.additionalCordapps.addAll(cordapps)
+                cordapps.forEach {
+                    if(it.mavenCoordinates != null) {
+                        node.cordapp(project.project(it.mavenCoordinates!!))
+                    } else {
+                        node.cordapp(it.projectName!!)
+                    }
+                }
                 node.rootDir(directory)
             }
             cd.setup { nodeName -> project.projectDir.toPath().resolve(getNodeByName(nodeName)!!.nodeDir.toPath()) }
@@ -193,30 +202,6 @@ open class Cordform @Inject constructor(private val objectFactory: ObjectFactory
             bootstrapMethod.invoke(networkBootstrapper, rootDir)
         } catch (e: InvocationTargetException) {
             throw e.cause!!
-        }
-    }
-
-    private fun CordformDefinition.getMatchingCordapps(): List<File> {
-        val cordappJars = project.configuration("cordapp").files
-        return cordappPackages.map { `package` ->
-            val cordappsWithPackage = cordappJars.filter { it.containsPackage(`package`) }
-            when (cordappsWithPackage.size) {
-                0 -> throw IllegalArgumentException("There are no cordapp dependencies containing the package $`package`")
-                1 -> cordappsWithPackage[0]
-                else -> throw IllegalArgumentException("More than one cordapp dependency contains the package $`package`: $cordappsWithPackage")
-            }
-        }
-    }
-
-    private fun File.containsPackage(`package`: String): Boolean {
-        JarInputStream(inputStream()).use {
-            while (true) {
-                val name = it.nextJarEntry?.name ?: break
-                if (name.endsWith(".class") && name.replace('/', '.').startsWith(`package`)) {
-                    return true
-                }
-            }
-            return false
         }
     }
 }

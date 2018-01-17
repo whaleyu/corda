@@ -63,7 +63,6 @@ class CordformTest {
         assertThat(getNodeCordappConfig(notaryNodeName, localCordappJarName)).exists()
     }
 
-    private fun createBuildFile(buildFileResourceName: String) = IOUtils.copy(javaClass.getResourceAsStream(buildFileResourceName), buildFile!!.outputStream())
     private fun getStandardGradleRunnerFor(buildFileResourceName: String): GradleRunner {
         createBuildFile(buildFileResourceName)
         return GradleRunner.create()
@@ -71,6 +70,8 @@ class CordformTest {
                 .withArguments("deployNodes", "-s")
                 .withPluginClasspath()
     }
+
+    private fun createBuildFile(buildFileResourceName: String) = IOUtils.copy(javaClass.getResourceAsStream(buildFileResourceName), buildFile!!.outputStream())
     private fun getNodeCordappJar(nodeName: String, cordappJarName: String) = File(testProjectDir.root, "build/nodes/$nodeName/cordapps/$cordappJarName.jar")
     private fun getNodeCordappConfig(nodeName: String, cordappJarName: String) = File(testProjectDir.root, "build/nodes/$nodeName/cordapps/$cordappJarName.conf")
 }
