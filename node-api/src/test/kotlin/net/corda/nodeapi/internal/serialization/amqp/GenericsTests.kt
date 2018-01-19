@@ -277,4 +277,31 @@ class GenericsTests {
             }
         }
     }
+
+    @Test
+    fun implemntsGeneric() {
+        open class B<out T>(open val a: T)
+        class D(override val a: String) : B<String>(a)
+
+        val factory = testDefaultFactoryNoEvolution()
+
+        val bytes = SerializationOutput(factory).serialize(D("Test"))
+
+        DeserializationInput(factory).deserialize(bytes).apply { assertEquals("Test", this.a) }
+    }
+
+    interface implementsGenericInterfaceI<out T> {
+        val a: T
+    }
+
+    @Test
+    fun implemntsGenericInterface() {
+        class D(override val a: String) : implementsGenericInterfaceI<String>
+
+        val factory = testDefaultFactoryNoEvolution()
+
+        val bytes = SerializationOutput(factory).serialize(D("Test"))
+
+        DeserializationInput(factory).deserialize(bytes).apply { assertEquals("Test", this.a) }
+    }
 }
